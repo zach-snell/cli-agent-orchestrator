@@ -321,3 +321,53 @@ class TestClaudeCodeProviderWithProfile:
 
         finally:
             tmux_client.kill_session(test_session_name)
+
+
+class TestClaudeCodeProviderWithProviderArgs:
+    """Integration tests for provider_args passthrough."""
+
+    def test_initialization_with_provider_args(self, claude_cli_available, test_session_name, cleanup_session):
+        """Test Claude Code initializes with provider_args (--dangerously-skip-permissions)."""
+        terminal_id = "test-cc-args"
+        window_name = "window-0"
+        tmux_client.create_session(test_session_name, window_name, terminal_id)
+
+        try:
+            # Create provider with provider_args
+            provider = ClaudeCodeProvider(
+                terminal_id,
+                test_session_name,
+                window_name,
+                agent_profile=None,  # No profile to keep it simple
+                provider_args="--dangerously-skip-permissions",
+            )
+
+            # Verify provider_args is set
+            assert provider.provider_args == "--dangerously-skip-permissions"
+
+            # Build command and verify args are included
+            command = provider._build_claude_command()
+            assert "--dangerously-skip-permissions" in command
+
+            # Initialize (this will actually start claude with the args)
+            result = provider.initialize()
+            assert result is True
+
+            # Give it a moment
+            time.sleep(2)
+
+            # Verify it's running (IDLE means ready)
+            status = provider.get_status()
+            assert status == TerminalStatus.IDLE
+
+            # Verify the command was sent with the args by checking terminal output
+            output = tmux_client.get_history(test_session_name, window_name)
+            assert "--dangerously-skip-permissions" in output
+
+        finally:
+            try:
+                tmux_client.send_keys(test_session_name, window_name, "/exit")
+                time.sleep(1)
+            except Exception:
+                pass
+            tmux_client.kill_session(test_session_name)
